@@ -145,9 +145,16 @@ i=5L
 dat_in <- dat_in %>%
     rowwise() %>%
     mutate(sa_5 = fn_sa_xtx3(r = r_5, r01_a = r01_a[i], r01_b = r01_b[i], r12_a = r12_a[i], r12_b = r12_b[i], xt= xt, x0 = x0, x3 = x3, yz_x0 = yz_x0, yz_x1 = yz_x1, yz_x2 = yz_x2, yz_x3 = yz_x3, v_x0x3_1 = v_x0x3_1))
-  
+
 # columns (i.e. model) mean surface areas
 sum_tab <- dat_in %>%
+  group_by() %>%
+  summarise(sa_m1 = mean(sa_1), sa_m2 = mean(sa_2), sa_m3 = mean(sa_3), 
+            sa_m4 = mean(sa_4), sa_m5 = mean(sa_5), wei = mean(vikt), 
+            sa_wei = mean(sa_1)/mean(vikt)) 
+  
+# columns (i.e. model) mean surface areas
+sum_tab_2 <- dat_in %>%
   group_by(r_s_l) %>%
   summarise(sa_m1 = mean(sa_1), sa_m2 = mean(sa_2), sa_m3 = mean(sa_3), 
             sa_m4 = mean(sa_4), sa_m5 = mean(sa_5), wei = mean(vikt), 
@@ -155,8 +162,8 @@ sum_tab <- dat_in %>%
 
 dat_in <- drop_na(dat_in, ytaskador)
 
-sum_tab_2 <- dat_in %>%
+sum_tab_3 <- dat_in %>%
   group_by(r_s_l) %>%
   summarise(yta_sa = mean(ytaskador)/mean(sa_1))
 
-write_xlsx(path = "sum_tabs.xlsx", list(models = sum_tab, skador = sum_tab_2))
+write_xlsx(path = "sum_tabs.xlsx", list(models = sum_tab, models_by_size = sum_tab_2, skador_by_size = sum_tab_3))
