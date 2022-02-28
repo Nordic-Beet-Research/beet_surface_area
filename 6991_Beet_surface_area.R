@@ -59,8 +59,8 @@
 dat_in <- data.frame(read_excel("RawData_Beet_Size_and_Damage.xlsx", sheet="Rawdata_beet", col_names=T,skip=0))
 
 # Define model fixed parameters
-slo <- 0.8
-den <- 1.1
+slo <- 0.8  # "slope", but really the ratio of y_x0:y_x1 and y_x2:y_x3.
+den <- 1.1  # density of sugar beet
 top <- 2    # ratio of mean(r_y_xt, r_z_xt):x_top
 
 r01_a <- c(1,1,2,3,2)
@@ -69,32 +69,38 @@ r12_a <- c(1,1,1,1,1)
 r12_b <- c(1,1,1,1,1)
   
 # Calculate
+## y
+dat_in <- dat_in %>% mutate(y_x0 = diameter_max/2, 
+                            y_x1 = y_x0*slo,
+                            y_x3 = rotspetsbrot_max/2,
+                            y_x2 = y_x3/slo)
 
-dat_in <- dat_in %>% mutate(y_x0 = diameter_max/2)
-dat_in <- dat_in %>% mutate(y_x1 = y_x0*slo)
-dat_in <- dat_in %>% mutate(y_x3 = rotspetsbrot_max/2)
-dat_in <- dat_in %>% mutate(y_x2 = y_x3/slo)
+## z
+dat_in <- dat_in %>% mutate(z_x0 = diameter_min/2,
+                            z_x1 = z_x0*slo,
+                            z_x3 = rotspetsbrot_min/2,
+                            z_x2 = z_x3/slo)
 
-dat_in <- dat_in %>% mutate(z_x0 = diameter_min/2)
-dat_in <- dat_in %>% mutate(z_x1 = z_x0*slo)
-dat_in <- dat_in %>% mutate(z_x3 = rotspetsbrot_min/2)
-dat_in <- dat_in %>% mutate(z_x2 = z_x3/slo)
+## yz
+dat_in <- dat_in %>% rowwise %>% mutate(yz_x0 = mean(c(y_x0, z_x0)),
+                                        yz_x1 = mean(c(y_x1, z_x1)),
+                                        yz_x2 = mean(c(y_x2, z_x2)),
+                                        yz_x3 = mean(c(y_x3, z_x3)))
 
-dat_in <- dat_in %>% rowwise %>% mutate(yz_x0 = mean(c(y_x0, z_x0)))
-dat_in <- dat_in %>% rowwise %>% mutate(yz_x1 = mean(c(y_x1, z_x1)))
-dat_in <- dat_in %>% rowwise %>% mutate(yz_x2 = mean(c(y_x2, z_x2)))
-dat_in <- dat_in %>% rowwise %>% mutate(yz_x3 = mean(c(y_x3, z_x3)))
+## x
+dat_in <- dat_in %>% mutate(xt = yz_x0/top,
+                            x0 = 0,
+                            x3 = längd - xt)
 
-dat_in <- dat_in %>% mutate(xt = yz_x0/top)
-dat_in <- dat_in %>% mutate(x0 = 0)
-dat_in <- dat_in %>% mutate(x3 = längd - xt)
-
+## clean up
 dat_in <- drop_na(dat_in, xt)
 
-dat_in <- dat_in %>% mutate(v_tot = vikt/den)
-dat_in <- dat_in %>% mutate(v_top = (4/3*pi*xt*yz_x0*yz_x0)/2)
-dat_in <- dat_in %>% mutate(v_x0x3_1 = v_tot - v_top)
+## volume
+dat_in <- dat_in %>% mutate(v_tot = vikt/den,
+                            v_top = (4/3*pi*xt*yz_x0*yz_x0)/2,
+                            v_x0x3_1 = v_tot - v_top)
 
+## function to solve on. NB: the optimize function solves on the first argument (here, r).
 fn_diff <- function(r, r01_a, r01_b, r12_a, r12_b, x0, x3, yz_x0, yz_x1, yz_x2, yz_x3, v_x0x3_1) {
   r01 <- r01_a*r^r01_b
   r12 <- r12_a*r^r12_b
@@ -113,6 +119,7 @@ fn_diff <- function(r, r01_a, r01_b, r12_a, r12_b, x0, x3, yz_x0, yz_x1, yz_x2, 
   diff <- (v_x0x3_1 - v_x0x3_2)^2
 }
 
+# solve the function for each model specification
 for(i in 1:length(r01_a)){
   dat_in <- dat_in %>%
     rowwise() %>%
@@ -121,6 +128,7 @@ for(i in 1:length(r01_a)){
   names(dat_in)[names(dat_in) == "r"] <- paste0("r_",i)
 }
 
+# function for calculation of surface area
 fn_sa_xtx3 <- function(r, r01_a, r01_b, r12_a, r12_b, xt, x0, x3, yz_x0, yz_x1, yz_x2, yz_x3, v_x0x3_1) {
   r01 <- r01_a*r^r01_b
   r12 <- r12_a*r^r12_b
@@ -140,25 +148,34 @@ fn_sa_xtx3 <- function(r, r01_a, r01_b, r12_a, r12_b, xt, x0, x3, yz_x0, yz_x1, 
   sa_xtx3
 }
 
-# NEED TO MANUALLY CHANGE THE # AT: i = #L, sa_# =, and r= r_#
-i=5L
-dat_in <- dat_in %>%
-    rowwise() %>%
-    mutate(sa_5 = fn_sa_xtx3(r = r_5, r01_a = r01_a[i], r01_b = r01_b[i], r12_a = r12_a[i], r12_b = r12_b[i], xt= xt, x0 = x0, x3 = x3, yz_x0 = yz_x0, yz_x1 = yz_x1, yz_x2 = yz_x2, yz_x3 = yz_x3, v_x0x3_1 = v_x0x3_1))
+# calculate surface area for each model specification. 
 
+for(i in 1:length(r01_a)){
+  
+  r_i <- sym(paste0("r_",i))
+  
+  dat_in <- dat_in %>%
+    rowwise() %>%
+    mutate(sa_ = fn_sa_xtx3(r = !!r_i, r01_a = r01_a[i], r01_b = r01_b[i], r12_a = r12_a[i], r12_b = r12_b[i], xt= xt, x0 = x0, x3 = x3, yz_x0 = yz_x0, yz_x1 = yz_x1, yz_x2 = yz_x2, yz_x3 = yz_x3, v_x0x3_1 = v_x0x3_1))
+
+  names(dat_in)[names(dat_in) == "sa_"] <- paste0("sa_",i)
+  
+  }
+
+# SUMMARY TABLES
 # columns (i.e. model) mean surface areas
 sum_tab <- dat_in %>%
   group_by() %>%
   summarise(sa_m1 = mean(sa_1), sa_m2 = mean(sa_2), sa_m3 = mean(sa_3), 
             sa_m4 = mean(sa_4), sa_m5 = mean(sa_5), wei = mean(vikt), 
-            sa_wei = mean(sa_1)/mean(vikt)) 
+            sa_wei = mean(sa_1)/mean(vikt), yz_x0_mean = mean(yz_x0)) 
   
 # columns (i.e. model) mean surface areas
 sum_tab_2 <- dat_in %>%
   group_by(r_s_l) %>%
   summarise(sa_m1 = mean(sa_1), sa_m2 = mean(sa_2), sa_m3 = mean(sa_3), 
             sa_m4 = mean(sa_4), sa_m5 = mean(sa_5), wei = mean(vikt), 
-            sa_wei = mean(sa_1)/mean(vikt)) 
+            sa_wei = mean(sa_1)/mean(vikt), yz_x0_mean = mean(yz_x0)) 
 
 dat_in <- drop_na(dat_in, ytaskador)
 
